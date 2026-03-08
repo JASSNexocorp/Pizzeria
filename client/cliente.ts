@@ -1,108 +1,65 @@
-import * as anchor from "@coral-xyz/anchor";
-import { AnchorProvider, BN, Program, web3 } from "@coral-xyz/anchor";
-
-// Conectamos a devnet (red de pruebas de Solana, tokens sin valor real)
-const connection = new web3.Connection(
-  "https://api.devnet.solana.com",
-  "confirmed",
-);
-
-// Generamos una wallet de prueba (keypair = par de claves pública/privada)
-// En producción cargarías esto desde un archivo o variable de entorno
-const wallet = web3.Keypair.generate();
-
-// El Provider conecta wallet + red y firma las transacciones
-const provider = new AnchorProvider(connection, new anchor.Wallet(wallet), {
-  commitment: "confirmed",
-});
-
-// ID del programa — debe coincidir con `declare_id!` en lib.rs
-const PROGRAM_ID = new web3.PublicKey(
-  "TuProgramIDAquiCuandoHagasAnchorBuild11111111",
-);
-
-// ── FUNCIÓN PARA DERIVAR LA PDA ───────────────────────────────────────
-// Esta función recrea la misma dirección PDA que el programa usa on-chain.
-// Las semillas deben ser EXACTAMENTE las mismas que en `seeds = [...]` de lib.rs.
-async function getPizzeriaPDA(
-  duenoPubkey: web3.PublicKey,
-): Promise<[web3.PublicKey, number]> {
-  return web3.PublicKey.findProgramAddressSync(
+// ── DERIVAR LA PDA ────────────────────────────────────────────────────
+// Recrea la misma dirección que el contrato usa on-chain.
+// Las seeds deben ser IDÉNTICAS a las del lib.rs: [b"pizzeria", dueno]
+async function getPizzeriaPDA() {
+  const [pda] = web3.PublicKey.findProgramAddressSync(
     [
-      Buffer.from("pizzeria"), // seed fija: el string "pizzeria" como bytes
-      duenoPubkey.toBuffer(), // seed dinámica: la clave pública del dueño
+      Buffer.from("pizzeria"), // seed fija — igual que en lib.rs
+      pg.wallet.publicKey.toBuffer(), // seed dinámica — tu wallet
     ],
-    PROGRAM_ID,
+    pg.program.programId, // ID del programa deployado
   );
+  return pda;
 }
 
-// ── FUNCIONES CRUD ────────────────────────────────────────────────────
-
-// CREATE — Crear la pizzería
-async function crearPizzeria(
-  program: any,
-  dueno: web3.Keypair,
-  nombre: string,
-) {
-  const [pizzeriaPDA] = await getPizzeriaPDA(dueno.publicKey);
-
+// ── CREATE — Crear la pizzería ─────────────────────────────────────────
+async function crearPizzeria(nombre: string) {
+  const pizzeriaPDA = await getPizzeriaPDA();
   console.log(`\n🏗️  Creando pizzería "${nombre}"...`);
-  console.log(`   PDA: ${pizzeriaPDA.toBase58()}`);
 
-  const tx = await program.methods
-    .crearPizzeria(nombre) // llama a la instrucción `crear_pizzeria` de lib.rs
+  const tx = await pg.program.methods
+    .crearPizzeria(nombre)
     .accounts({
-      dueno: dueno.publicKey,
+      dueno: pg.wallet.publicKey,
       pizzeria: pizzeriaPDA,
       systemProgram: web3.SystemProgram.programId,
     })
-    .signers([dueno]) // el dueño firma la transacción
-    .rpc(); // .rpc() envía la tx a la red y devuelve el hash
+    .rpc(); // Playground firma automáticamente con pg.wallet
 
-  console.log(`   ✅ TX: ${tx}`);
-  return pizzeriaPDA;
+  console.log(`✅ Pizzería creada! TX: ${tx}`);
 }
 
-// CREATE — Agregar una pizza al menú
+// ── CREATE — Agregar pizza ─────────────────────────────────────────────
 async function agregarPizza(
-  program: any,
-  dueno: web3.Keypair,
-  pizzeriaPDA: web3.PublicKey,
   nombre: string,
   ingredientes: string[],
   precio: number,
 ) {
+  const pizzeriaPDA = await getPizzeriaPDA();
   console.log(`\n🍕 Agregando pizza "${nombre}"...`);
 
-  const tx = await program.methods
-    .agregarPizza(
-      nombre,
-      ingredientes,
-      new BN(precio), // `BN` = Big Number, necesario para u64 en el cliente TS
-    )
+  const tx = await pg.program.methods
+    .agregarPizza(nombre, ingredientes, new BN(precio))
     .accounts({
-      dueno: dueno.publicKey,
+      dueno: pg.wallet.publicKey,
       pizzeria: pizzeriaPDA,
     })
-    .signers([dueno])
     .rpc();
 
-  console.log(`   ✅ TX: ${tx}`);
+  console.log(`✅ Pizza agregada! TX: ${tx}`);
 }
 
-// UPDATE — Actualizar una pizza existente
+// ── UPDATE — Actualizar pizza ──────────────────────────────────────────
 async function actualizarPizza(
-  program: any,
-  dueno: web3.Keypair,
-  pizzeriaPDA: web3.PublicKey,
   nombre: string,
   nuevoPrecio: number,
   nuevosIngredientes: string[],
   disponible: boolean,
 ) {
+  const pizzeriaPDA = await getPizzeriaPDA();
   console.log(`\n✏️  Actualizando pizza "${nombre}"...`);
 
-  const tx = await program.methods
+  const tx = await pg.program.methods
     .actualizarPizza(
       nombre,
       new BN(nuevoPrecio),
@@ -110,144 +67,96 @@ async function actualizarPizza(
       disponible,
     )
     .accounts({
-      dueno: dueno.publicKey,
+      dueno: pg.wallet.publicKey,
       pizzeria: pizzeriaPDA,
     })
-    .signers([dueno])
     .rpc();
 
-  console.log(`   ✅ TX: ${tx}`);
+  console.log(`✅ Pizza actualizada! TX: ${tx}`);
 }
 
-// DELETE — Eliminar una pizza del menú
-async function eliminarPizza(
-  program: any,
-  dueno: web3.Keypair,
-  pizzeriaPDA: web3.PublicKey,
-  nombre: string,
-) {
+// ── DELETE — Eliminar pizza ────────────────────────────────────────────
+async function eliminarPizza(nombre: string) {
+  const pizzeriaPDA = await getPizzeriaPDA();
   console.log(`\n🗑️  Eliminando pizza "${nombre}"...`);
 
-  const tx = await program.methods
+  const tx = await pg.program.methods
     .eliminarPizza(nombre)
     .accounts({
-      dueno: dueno.publicKey,
+      dueno: pg.wallet.publicKey,
       pizzeria: pizzeriaPDA,
     })
-    .signers([dueno])
     .rpc();
 
-  console.log(`   ✅ TX: ${tx}`);
+  console.log(`✅ Pizza eliminada! TX: ${tx}`);
 }
 
-// READ — Leer el estado de la cuenta directamente (sin gastar SOL)
-// Esta es la forma real de "leer" datos on-chain: simplemente fetch de la cuenta.
-async function verMenu(program: any, pizzeriaPDA: web3.PublicKey) {
-  console.log(`\n📋 Leyendo menú desde la cuenta...`);
+// ── READ — Ver el menú ─────────────────────────────────────────────────
+async function verMenu() {
+  const pizzeriaPDA = await getPizzeriaPDA();
+  console.log(`\n📋 Leyendo menú...`);
 
-  // `fetch` lee y deserializa automáticamente la cuenta Pizzeria
-  const cuenta = await program.account.pizzeria.fetch(pizzeriaPDA);
+  // fetch() lee y deserializa la cuenta directamente — NO gasta SOL
+  const cuenta = await pg.program.account.pizzeria.fetch(pizzeriaPDA);
 
-  console.log(`\n   🏠 Pizzería: ${cuenta.nombre}`);
-  console.log(`   👤 Dueño: ${cuenta.dueno.toBase58()}`);
-  console.log(`   🍕 Pizzas en el menú (${cuenta.pizzas.length}):`);
+  console.log(`\n🏠 Pizzería: "${cuenta.nombre}"`);
+  console.log(`👤 Dueño: ${cuenta.dueno.toBase58()}`);
+  console.log(`🍕 Pizzas (${cuenta.pizzas.length}):`);
 
   cuenta.pizzas.forEach((pizza: any, i: number) => {
-    const estado = pizza.disponible ? "✅ disponible" : "❌ no disponible";
+    console.log(`\n  [${i + 1}] ${pizza.nombre} — $${pizza.precio.toString()}`);
+    console.log(`      Ingredientes: ${pizza.ingredientes.join(", ")}`);
     console.log(
-      `\n   [${i + 1}] ${pizza.nombre} — $${pizza.precio.toString()}`,
+      `      ${pizza.disponible ? "✅ disponible" : "❌ no disponible"}`,
     );
-    console.log(`       Ingredientes: ${pizza.ingredientes.join(", ")}`);
-    console.log(`       Estado: ${estado}`);
   });
 }
 
-// ── FLUJO PRINCIPAL ───────────────────────────────────────────────────
+// =====================================================================
+//  FLUJO PRINCIPAL — corre todo el CRUD de una vez
+// =====================================================================
 async function main() {
   console.log("=======================================================");
-  console.log("  🍕 PIZZERÍA SOLANA — Cliente de Pruebas");
+  console.log("  🍕 PIZZERÍA SOLANA — Solana Playground");
   console.log("=======================================================");
+  console.log(`\n👛 Wallet: ${pg.wallet.publicKey.toBase58()}`);
 
-  // 1. Airdrop: pedimos SOL de prueba en devnet para pagar transacciones
-  console.log("\n💸 Solicitando airdrop de 2 SOL en devnet...");
-  const airdropTx = await connection.requestAirdrop(
-    wallet.publicKey,
-    2 * web3.LAMPORTS_PER_SOL, // 1 SOL = 1_000_000_000 lamports
+  // PASO 1 — Crear la pizzería (solo la primera vez)
+  // Si ya la creaste antes, comentá esta línea para no tirar error
+  await crearPizzeria("La Napolitana");
+
+  // PASO 2 — Agregar pizzas
+  await agregarPizza("Margherita", ["tomate", "mozzarella", "albahaca"], 1200);
+  await agregarPizza(
+    "Cuatro Quesos",
+    ["mozzarella", "parmesano", "roquefort", "brie"],
+    1500,
   );
-  await connection.confirmTransaction(airdropTx);
-  console.log("   ✅ Airdrop recibido");
+  await agregarPizza(
+    "Napolitana",
+    ["tomate", "mozzarella", "anchoas", "aceitunas"],
+    1400,
+  );
 
-  // 2. Cargamos el IDL (Interface Definition Language)
-  // El IDL es el "ABI" del programa — describe sus instrucciones, cuentas y tipos.
-  // Se genera automáticamente con `anchor build` en `target/idl/pizzeria.json`
-  const idl = require("./target/idl/pizzeria.json");
-  const program = new Program(idl, PROGRAM_ID, provider);
+  // PASO 3 — Leer el menú
+  await verMenu();
 
-  // 3. Ejecutamos el CRUD completo
-  try {
-    // CREATE: crear la pizzería
-    const pizzeriaPDA = await crearPizzeria(program, wallet, "La Napolitana");
+  // PASO 4 — Actualizar la Margherita
+  await actualizarPizza(
+    "Margherita",
+    1350,
+    ["tomate cherry", "mozzarella", "albahaca"],
+    true,
+  );
 
-    // CREATE: agregar pizzas
-    await agregarPizza(
-      program,
-      wallet,
-      pizzeriaPDA,
-      "Margherita",
-      ["tomate", "mozzarella", "albahaca"],
-      1200,
-    );
+  // PASO 5 — Eliminar la Napolitana
+  await eliminarPizza("Napolitana");
 
-    await agregarPizza(
-      program,
-      wallet,
-      pizzeriaPDA,
-      "Cuatro Quesos",
-      ["mozzarella", "parmesano", "roquefort", "brie"],
-      1500,
-    );
+  // PASO 6 — Ver el menú final
+  await verMenu();
 
-    await agregarPizza(
-      program,
-      wallet,
-      pizzeriaPDA,
-      "Napolitana",
-      ["tomate", "mozzarella", "anchoas", "aceitunas"],
-      1400,
-    );
-
-    // READ: ver el menú después de agregar
-    await verMenu(program, pizzeriaPDA);
-
-    // UPDATE: actualizar la Margherita
-    await actualizarPizza(
-      program,
-      wallet,
-      pizzeriaPDA,
-      "Margherita",
-      1350, // nuevo precio
-      ["tomate cherry", "mozzarella", "albahaca"], // nuevos ingredientes
-      true, // sigue disponible
-    );
-
-    // DELETE: eliminar la Napolitana
-    await eliminarPizza(program, wallet, pizzeriaPDA, "Napolitana");
-
-    // READ: ver el menú final
-    await verMenu(program, pizzeriaPDA);
-
-    console.log("\n\n🎉 ¡CRUD completo ejecutado con éxito!");
-    console.log(
-      "   Podés ver las transacciones en: https://explorer.solana.com/?cluster=devnet",
-    );
-  } catch (err: any) {
-    console.error("\n❌ Error:", err.message ?? err);
-    // Si el error viene del programa, Anchor incluye el mensaje del #[error_code]
-    if (err.logs) {
-      console.error("   Logs del programa:");
-      err.logs.forEach((log: string) => console.error("  ", log));
-    }
-  }
+  console.log("\n\n🎉 ¡CRUD completo!");
+  console.log(`🔍 Ver TXs: https://explorer.solana.com/?cluster=devnet`);
 }
 
 main();
