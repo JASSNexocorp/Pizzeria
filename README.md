@@ -12,7 +12,7 @@ Programa on-chain para gestionar el menú de una pizzería. Construido con Ancho
 1. Abrí **[beta.solpg.io](https://beta.solpg.io)**
 2. Clic en el ícono de GitHub (panel izquierdo) → pegá `https://github.com/JASSNexocorp/Pizzeria` → Import
 3. Clic **Build** → **Deploy**
-4. Pestaña **Client** → abrí `cliente_playground.ts` → **Run**
+4. Pestaña **Client** → abrí `cliente.ts` → **Run**
 
 > ⚠️ `crearPizzeria()` solo se llama **una vez** por wallet. En ejecuciones siguientes, comentá esa línea.
 
